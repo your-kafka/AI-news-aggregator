@@ -1,0 +1,123 @@
+# ============================================================================
+#  Lodestar - a multi-stage retrieval engine for AI news
+#  This file is the project's ID card + shopping list.
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# [project] - who we are, and what we need to RUN in production.
+# ---------------------------------------------------------------------------
+[project]
+name = "lodestar"
+version = "0.1.0"
+description = "Multi-stage retrieval engine for AI news: hybrid search, MIL pooling, cross-encoder re-ranking."
+readme = "README.md"
+requires-python = ">=3.11"
+
+dependencies = [
+    # -- data validation -------------------------------------------------
+    "pydantic>=2.9",            # checks data is the right shape
+    "pydantic-settings>=2.5",   # reads + validates config from env vars
+
+    # -- database --------------------------------------------------------
+    "sqlalchemy>=2.0.30",       # talk to Postgres with Python objects
+    "alembic>=1.13",            # version control for the database schema
+    "psycopg[binary]>=3.2",     # the actual Postgres driver
+
+    # -- logging ---------------------------------------------------------
+    "structlog>=24.4",          # JSON logs that Grafana can search
+]
+
+# ---------------------------------------------------------------------------
+# [dependency-groups] - tools we need to BUILD, but never ship.
+# These stay out of the production Docker image.
+# ---------------------------------------------------------------------------
+[dependency-groups]
+dev = [
+    "pytest>=8.3",              # runs the tests
+    "pytest-cov>=5.0",          # measures how much code the tests touch
+    "ruff>=0.6",                # linter + formatter (replaces flake8+black+isort)
+    "mypy>=1.11",               # checks our type hints are honest
+    "pre-commit>=3.8",          # runs the above automatically on git commit
+]
+
+# ---------------------------------------------------------------------------
+# [tool.ruff] - our linter/formatter settings.
+# Living here means they apply identically on your laptop and in CI.
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# Each code below switches on a family of checks:
+select = [
+    "E",    # pycodestyle errors   - spacing, indentation
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes             - unused imports, undefined names
+    "I",    # isort                - import order
+    "B",    # bugbear              - likely bugs (e.g. mutable default args)
+    "UP",   # pyupgrade            - nudges toward modern Python syntax
+    "SIM",  # simplify             - "this if/else is just a bool()"
+    "C4",   # comprehensions       - cleaner list/dict comprehensions
+    "RUF",  # ruff's own extra rules
+]
+ignore = [
+    "E501",  # line-too-long: the formatter already handles line width
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are allowed to use `assert` freely and have long fixture names.
+"tests/**" = ["S101"]
+
+# ---------------------------------------------------------------------------
+# [tool.mypy] - type checking, set to strict.
+# Strict is harsher now but catches real bugs before they run.
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_unreachable = true          # flags code that can never execute
+show_error_codes = true
+plugins = ["pydantic.mypy"]      # teaches mypy how Pydantic models work
+
+[[tool.mypy.overrides]]
+# Some libraries ship no type hints. Don't fail the build over their gaps.
+module = ["structlog.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------------------
+# [tool.pytest] - how tests are discovered and run.
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = [
+    "-q",                        # quiet output
+    "--strict-markers",          # typo'd @pytest.mark names become errors
+]
+markers = [
+    "integration: needs a real database (skipped by default in fast runs)",
+]
+
+# ---------------------------------------------------------------------------
+# [tool.coverage] - what counts toward the coverage number.
+# ---------------------------------------------------------------------------
+[tool.coverage.run]
+source = ["lodestar"]
+omit = ["*/migrations/*", "*/__main__.py"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",         # import-only blocks never run
+    "raise NotImplementedError",
+]
+
+# ---------------------------------------------------------------------------
+# [build-system] - how to package this. Boilerplate: set once, ignore forever.
+# ---------------------------------------------------------------------------
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["lodestar"]

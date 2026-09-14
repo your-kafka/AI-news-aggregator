@@ -1,0 +1,75 @@
+# ============================================================================
+#  .gitignore - files git must never track.
+#
+#  Three reasons a file lands here:
+#    1. SECRET      - would leak credentials if pushed to GitHub
+#    2. REBUILDABLE - can be regenerated from a file we DO commit
+#    3. JUNK        - machine-specific noise, meaningless to anyone else
+# ============================================================================
+
+# ---------------------------------------------------------------------------
+# 1. SECRETS  <- the important section. Never relax these.
+# ---------------------------------------------------------------------------
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# ...but DO commit the template, so others know which keys they need.
+# The leading "!" means "except this one".
+!.env.example
+
+# ---------------------------------------------------------------------------
+# 2. REBUILDABLE - regenerate with `uv sync`, so never commit
+# ---------------------------------------------------------------------------
+.venv/
+venv/
+env/
+
+# Python bytecode: created automatically every time you run code
+__pycache__/
+*.py[cod]
+*.so
+
+# Packaging output
+build/
+dist/
+*.egg-info/
+
+# ML model weights - hundreds of MB, downloaded on demand (from P3 onward)
+models/
+.cache/huggingface/
+
+# ---------------------------------------------------------------------------
+# 3. JUNK - tool caches and OS clutter
+# ---------------------------------------------------------------------------
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+
+# macOS Finder droppings
+.DS_Store
+
+# Editor settings - yours, not the project's
+.vscode/
+.idea/
+*.swp
+
+# Logs and scratch files
+*.log
+logs/
+scratch/
+notebooks/*.ipynb
+
+# ---------------------------------------------------------------------------
+#  NOT ignored, on purpose - these MUST be committed:
+#    pyproject.toml   the shopping list
+#    uv.lock          the receipt (exact versions -> reproducible builds)
+#    .python-version  which Python to use
+#    .env.example     the template showing which secrets are needed
+# ---------------------------------------------------------------------------

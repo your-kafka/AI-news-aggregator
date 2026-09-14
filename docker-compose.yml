@@ -1,0 +1,91 @@
+# ============================================================================
+#  docker-compose.yml - the services Lodestar needs, written down.
+#
+#  Start :  docker compose up -d      (-d = background)
+#  Stop  :  docker compose down       (containers go, DATA STAYS)
+#  Wipe  :  docker compose down -v    (-v also deletes the data. careful.)
+#  Watch :  docker compose ps
+#  Logs  :  docker compose logs -f postgres
+#
+#  NOTE: there is no "version:" key at the top. That was required in
+#  Compose v1 and is obsolete in v2 - including it now prints a warning.
+# ============================================================================
+
+# Prefixes every container, volume and network with "lodestar-" so this
+# project never collides with another project on your machine.
+name: lodestar
+
+services:
+
+  # -------------------------------------------------------------------------
+  #  postgres - our database.
+  #
+  #  Image is pgvector/pgvector, which is plain Postgres 17 PLUS the pgvector
+  #  extension for storing embeddings (needed from P3). Chosen now because
+  #  swapping the image later would mean throwing away the data volume.
+  # -------------------------------------------------------------------------
+  postgres:
+    image: pgvector/pgvector:pg17     # pinned. never ":latest".
+    container_name: lodestar-postgres
+
+    # Restart if it crashes or the laptop reboots - but NOT if you deliberately
+    # ran `docker compose down`. That is what "unless-stopped" means.
+    restart: unless-stopped
+
+    # Values come from your .env file, which compose reads automatically.
+    #   ${VAR:-default}  ->  use .env, fall back to default
+    #   ${VAR:?message}  ->  use .env, or REFUSE TO START and print message
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lodestar}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-lodestar}
+
+    # "outside:inside" - forwards a port on your Mac into the container.
+    # Change only the LEFT number (in .env) if 5432 is already taken.
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+
+    # THE IMPORTANT ONE.
+    # Containers are disposable; anything written inside them dies with them.
+    # This stores Postgres's data in a Docker-managed volume that OUTLIVES the
+    # container, so `down` then `up` keeps every row.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+    # "Running" is not "ready". Postgres needs a few seconds after boot before
+    # it accepts connections. Without this, an app that starts too fast gets
+    # "connection refused" - the classic "works the second time" bug.
+    #
+    # pg_isready ships with Postgres and answers: "can you take queries yet?"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lodestar} -d ${POSTGRES_DB:-lodestar}"]
+      interval: 5s        # ask every 5 seconds
+      timeout: 3s         # each check must answer within 3s
+      retries: 10         # 10 failures in a row -> mark unhealthy
+      start_period: 10s   # grace period on boot; failures here don't count
+
+    # A safety net, not a performance tweak. If a runaway query tries to eat
+    # all your RAM, Docker stops the container instead of freezing your Mac.
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+# ---------------------------------------------------------------------------
+#  volumes - storage that survives the containers using it.
+#  Declaring "pgdata" here is what lets the service above mount it.
+# ---------------------------------------------------------------------------
+volumes:
+  pgdata:
+    name: lodestar-pgdata
+
+# ---------------------------------------------------------------------------
+#  Coming later - each arrives in the phase that needs it:
+#    P8  redis      task queue for Celery
+#    P8  api        FastAPI, depends_on postgres condition: service_healthy
+#    P8  worker     Celery worker
+#    P8  beat       Celery scheduler
+#    P8  flower     queue dashboard
+#    P9  ui         Streamlit
+#    P12 prometheus + grafana   (behind a --profile so they only run on demand)
+# ---------------------------------------------------------------------------
