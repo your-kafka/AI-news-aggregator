@@ -104,6 +104,23 @@ ingest:  ## Fetch from all five sources into the database
 enrich:  ## Fetch article bodies and transcripts (make enrich n=50)
 	uv run python -m lodestar.enrichment $(or $(n),50)
 
+ui:  ## Open a browser UI for the database (http://localhost:8080)
+	@$(COMPOSE) --profile tools up -d adminer
+	@echo ""
+	@echo "  Open  http://localhost:8080"
+	@echo ""
+	@echo "    System    PostgreSQL"
+	@echo "    Server    postgres"
+	@echo "    Username  $(PG_USER)"
+	@echo "    Password  (POSTGRES_PASSWORD from your .env)"
+	@echo "    Database  $(PG_DB)"
+	@echo ""
+	@echo "  Then click the 'articles' table."
+	@echo ""
+
+ui-down:  ## Stop the database browser UI
+	@$(COMPOSE) --profile tools stop adminer
+
 peek:  ## Browse the corpus: counts, longest/shortest docs, a sample
 	@uv run python -m lodestar.storage.peek
 
@@ -158,4 +175,4 @@ clean:  ## Delete caches and build junk (safe - nothing important)
 #  These are COMMANDS, not files.
 #  Without this line, a folder named "test" would make `make test` do nothing.
 # ---------------------------------------------------------------------------
-.PHONY: help install up down ps logs db db-reset ingest enrich peek show dsn articles migrate migration rollback migrations sql lint format typecheck test cov check clean
+.PHONY: help install up down ps logs db db-reset ui ui-down ingest enrich peek show dsn articles migrate migration rollback migrations sql lint format typecheck test cov check clean

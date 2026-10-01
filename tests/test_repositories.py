@@ -372,3 +372,69 @@ def test_permanent_failure_is_never_rescheduled(session: Session) -> None:
     assert stored.content_attempts == 3
     assert stored.content_next_attempt_at is None
     assert repo.list_needing_content() == []
+
+
+# ---------------------------------------------------------------------------
+#  improve_title - deliberately conservative
+# ---------------------------------------------------------------------------
+
+
+def test_title_is_trimmed_when_the_feed_appended_junk(session: Session) -> None:
+    """The real case: the Anthropic mirror glues the body's opening sentence
+    onto the title, which would otherwise be indexed as the subject."""
+    repo = ArticleRepository(session)
+    polluted = "An alignment assessment of recent incidentsWe present an assessment of four"
+    repo.upsert_many([article("a", title=polluted)])
+    stored = repo.get_by_external_id(Source.OPENAI, "a")
+    assert stored is not None
+
+    assert repo.improve_title(stored.id, "An alignment assessment of recent incidents") is True
+    session.flush()
+
+    assert stored.title == "An alignment assessment of recent incidents"
+
+
+def test_a_clean_title_is_left_alone(session: Session) -> None:
+    repo = ArticleRepository(session)
+    repo.upsert_many([article("a", title="A perfectly good title")])
+    stored = repo.get_by_external_id(Source.OPENAI, "a")
+    assert stored is not None
+
+    assert repo.improve_title(stored.id, "A perfectly good title") is False
+    assert stored.title == "A perfectly good title"
+
+
+def test_a_merely_different_h1_does_not_overwrite(session: Session) -> None:
+    """An H1 that is not a prefix of the stored title is not evidence the
+    title is wrong - pages often phrase their heading differently. Rewriting
+    on any difference would be worse than the noise it removes."""
+    repo = ArticleRepository(session)
+    repo.upsert_many([article("a", title="Feed's phrasing of the headline")])
+    stored = repo.get_by_external_id(Source.OPENAI, "a")
+    assert stored is not None
+
+    assert repo.improve_title(stored.id, "A completely different heading") is False
+    assert stored.title == "Feed's phrasing of the headline"
+
+
+@pytest.mark.parametrize("candidate", [None, "", "Short"])
+def test_implausible_candidates_are_rejected(
+    session: Session, candidate: str | None
+) -> None:
+    repo = ArticleRepository(session)
+    repo.upsert_many([article("a", title="Short title and some more text")])
+    stored = repo.get_by_external_id(Source.OPENAI, "a")
+    assert stored is not None
+
+    assert repo.improve_title(stored.id, candidate) is False
+
+
+def test_a_trivially_shorter_candidate_is_rejected(session: Session) -> None:
+    """Removing one or two characters is more likely a punctuation
+    difference than appended junk."""
+    repo = ArticleRepository(session)
+    repo.upsert_many([article("a", title="An article title.")])
+    stored = repo.get_by_external_id(Source.OPENAI, "a")
+    assert stored is not None
+
+    assert repo.improve_title(stored.id, "An article title") is False

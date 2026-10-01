@@ -40,22 +40,39 @@ _CATEGORIES = sorted(
 )
 
 
-def split_title(raw: str) -> tuple[str, str | None]:
-    """Return (title, category) from a mirror-feed title string.
+_CATEGORY_RE = re.compile("^(" + "|".join(re.escape(c) for c in _CATEGORIES) + ")")
 
-    Leaves a normal title untouched, so the one post that arrives clean is
-    not mangled by a cleaner aimed at the six that do not.
+
+def split_title(raw: str) -> tuple[str, str | None]:
+    """Return (title, category) from a mirror-feed title or summary string.
+
+    The feed glues a date and a category onto the front, and it uses BOTH
+    orders - "Oct 1, 2026Science..." in the title field and
+    "AlignmentSep 9, 2026..." in the summary field - so this strips whichever
+    comes next until neither matches.
+
+    A clean string is returned untouched, so the posts that arrive tidy are
+    not mangled by a cleaner aimed at the ones that do not.
     """
     # .strip() FIRST. RSS wraps titles in newlines and indentation, and the
-    # ^ anchor below then never matches - which silently did nothing for the
+    # ^ anchors below then never match - which silently did nothing for the
     # entries that had whitespace, while the tidy ones worked fine.
-    text = _LEADING_DATE.sub("", raw.strip()).strip()
-    for category in _CATEGORIES:
-        if text.startswith(category):
-            remainder = text[len(category):].strip()
-            if remainder:
-                return remainder, category
-    return text, None
+    text = raw.strip()
+    category: str | None = None
+
+    for _ in range(4):  # at most a date and a category, in either order
+        match = _CATEGORY_RE.match(text)
+        if match:
+            category = match.group(1)
+            text = text[match.end():].lstrip()
+            continue
+        match = _LEADING_DATE.match(text)
+        if match:
+            text = text[match.end():].lstrip()
+            continue
+        break
+
+    return text, category
 
 
 @register
@@ -72,12 +89,17 @@ class AnthropicSource(RssSource):
         if not link:
             return None
         title, category = split_title(entry.get("title", ""))
+        raw_summary = entry.get("summary") or entry.get("description") or ""
+        # The summary carries the same date/category noise, in the other order.
+        summary, summary_category = split_title(raw_summary)
+        category = category or summary_category
+
         return ArticleIn(
             source=self.name,
             external_id=entry.get("id") or link,
             title=title,
             url=link,
             published_at=published_at,
-            summary=entry.get("summary") or entry.get("description"),
+            summary=summary or None,
             meta={"category": category} if category else {},
         )

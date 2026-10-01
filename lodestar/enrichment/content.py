@@ -28,6 +28,7 @@ cannot distinguish "never going to work" from "try again in an hour".
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 import httpx
@@ -211,6 +212,26 @@ class ContentFetcher:
         return extract_article_text(response.text, article.url)
 
 
+#: The first markdown heading trafilatura emits, which is the page's own <h1>.
+_MARKDOWN_H1 = re.compile(r"^\s*#\s+(?P<title>[^\n]+)")
+
+
+def title_from_markdown(content: str) -> str | None:
+    """The page's own H1, if the extracted markdown starts with one.
+
+    More trustworthy than a feed's title field. The Anthropic mirror glues a
+    date, a category and the opening sentence of the body onto its titles, so
+    "An alignment assessment of recent cybersecurity incidents" arrives as
+    "An alignment assessment of recent cybersecurity incidentsWe present an
+    alignment assessment of four incidents in which...". The H1 is just the
+    title.
+    """
+    match = _MARKDOWN_H1.match(content)
+    if match is None:
+        return None
+    return " ".join(match.group("title").split()) or None
+
+
 def extract_article_text(html: str, url: str = "") -> str:
     """Pull the article out of a page, as markdown.
 
@@ -290,6 +311,11 @@ def enrich_content(limit: int = 50, max_attempts: int = 3) -> dict[str, Any]:
                     )
                 else:
                     repo.set_content(article.id, text)
+                    # Trust the page's own H1 over the feed's title field,
+                    # but only when the stored title clearly has extra text
+                    # appended - never overwrite a title that is already clean.
+                    if repo.improve_title(article.id, title_from_markdown(text)):
+                        stats["titles_fixed"] = stats.get("titles_fixed", 0) + 1
                     stats["fetched"] += 1
                     stats["chars"] += len(text)
                     bucket["fetched"] += 1

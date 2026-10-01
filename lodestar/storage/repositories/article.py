@@ -91,6 +91,35 @@ class ArticleRepository:
 
     # -- reads -------------------------------------------------------------
 
+    def improve_title(self, article_id: uuid.UUID, candidate: str | None) -> bool:
+        """Replace the title with `candidate` only if it is clearly better.
+
+        "Better" means specifically: the stored title STARTS WITH the
+        candidate and is meaningfully longer - i.e. the feed appended junk
+        after the real title. Anything else is left alone, because a feed
+        title that merely differs from the H1 is not necessarily wrong, and
+        silently rewriting titles would be worse than the noise.
+        """
+        if not candidate or len(candidate) < 10:
+            return False
+        article = self.session.get(Article, article_id)
+        if article is None:
+            return False
+        if article.title == candidate:
+            return False
+        if not article.title.startswith(candidate):
+            return False
+        if len(article.title) - len(candidate) < 5:
+            return False
+
+        log.info(
+            "title_trimmed",
+            article_id=str(article_id),
+            removed_chars=len(article.title) - len(candidate),
+        )
+        article.title = candidate
+        return True
+
     def get(self, article_id: uuid.UUID) -> Article | None:
         return self.session.get(Article, article_id)
 

@@ -311,3 +311,63 @@ def test_browser_headers_are_sent() -> None:
     assert "User-Agent" in BROWSER_HEADERS
     assert "Accept-Language" in BROWSER_HEADERS
     assert BROWSER_HEADERS["Sec-Fetch-Mode"] == "navigate"
+
+
+# ---------------------------------------------------------------------------
+#  Title trimming - the page's own H1 beats a mirror feed's title field
+# ---------------------------------------------------------------------------
+
+
+def test_h1_is_read_from_extracted_markdown() -> None:
+    from lodestar.enrichment.content import title_from_markdown
+
+    assert title_from_markdown("# A real title\n\nBody text here.") == "A real title"
+
+
+def test_h1_collapses_wrapped_whitespace() -> None:
+    from lodestar.enrichment.content import title_from_markdown
+
+    assert title_from_markdown("#    Spaced   out  title\n") == "Spaced out title"
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "## Subscribe to our newsletter\n\nBody.",   # a sidebar, not the article
+        "Just body text with no heading.",
+        "",
+    ],
+)
+def test_no_h1_means_no_candidate(content: str) -> None:
+    """Returning None matters: one real article extracted a newsletter
+    sidebar instead of the body, so there was no H1 to trust. Guessing would
+    have replaced a usable title with 'Subscribe to our newsletter'."""
+    from lodestar.enrichment.content import title_from_markdown
+
+    assert title_from_markdown(content) is None
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected_title", "expected_category"),
+    [
+        # title field: date first, then category
+        ("Oct 1, 2026ScienceClaude-shaped science", "Claude-shaped science", "Science"),
+        # summary field: category first, then date
+        ("AlignmentSep 9, 2026An alignment assessment", "An alignment assessment", "Alignment"),
+        # category only
+        ("EconomicsWhat work can robots do?", "What work can robots do?", "Economics"),
+        # date only
+        ("Sep 4, 2026Formalizing Fermat", "Formalizing Fermat", None),
+        # already clean
+        ("Barclays scales Claude", "Barclays scales Claude", None),
+    ],
+)
+def test_feed_noise_is_stripped_in_either_order(
+    raw: str, expected_title: str, expected_category: str | None
+) -> None:
+    """The mirror feed uses BOTH orders - date-then-category in the title
+    field and category-then-date in the summary - so the cleaner must not
+    assume one."""
+    from lodestar.ingestion.sources.anthropic import split_title
+
+    assert split_title(raw) == (expected_title, expected_category)

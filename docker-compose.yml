@@ -71,6 +71,33 @@ services:
         limits:
           memory: 1G
 
+  # -------------------------------------------------------------------------
+  #  adminer - a browser UI for the database.
+  #
+  #  Postgres speaks its own protocol on port 5432, not HTTP, so a browser
+  #  cannot open it directly. Adminer is a small web app that connects to
+  #  Postgres and renders it as pages you CAN open.
+  #
+  #  Behind a profile, so it only runs when you ask:
+  #      docker compose --profile tools up -d     (or: make ui)
+  #  Keeping it out of the default set means the everyday `make up` stays
+  #  fast and nothing extra is listening when you do not need it.
+  # -------------------------------------------------------------------------
+  adminer:
+    image: adminer:5
+    container_name: lodestar-adminer
+    profiles: ["tools"]
+    restart: unless-stopped
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    environment:
+      # Pre-select PostgreSQL and the right host so the login form is
+      # already filled in apart from the password.
+      ADMINER_DEFAULT_SERVER: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 # ---------------------------------------------------------------------------
 #  volumes - storage that survives the containers using it.
 #  Declaring "pgdata" here is what lets the service above mount it.
