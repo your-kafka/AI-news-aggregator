@@ -81,6 +81,10 @@ class Settings(BaseSettings):
     youtube_channel_ids: str = "UCawZsQWqfGSbCI5yjkdVkTA"
     arxiv_categories: str = "cs.AI,cs.LG,cs.CL"
 
+    # cs.AI + cs.LG + cs.CL publish a few hundred papers a day, so this is
+    # the main lever on corpus size. Fetched in pages of 200 (see below).
+    arxiv_max_results: int = 600
+
     # -----------------------------------------------------------------
     #  Derived values - computed from the fields above, never stored.
     # -----------------------------------------------------------------

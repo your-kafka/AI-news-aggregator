@@ -18,7 +18,10 @@ from lodestar.ingestion.registry import register
 from lodestar.storage.models import Source
 
 _API = "https://export.arxiv.org/api/query"
-_MAX_RESULTS = 100
+
+#: arXiv caps a single response, so a large request is split into pages.
+#: RssSource already loops over feed_urls, so pagination is just several URLs.
+_PAGE_SIZE = 200
 
 # "http://arxiv.org/abs/2601.01234v2" -> "2601.01234"
 _ABS_ID = re.compile(r"/abs/(?P<id>[^v\s]+)(?:v\d+)?$")
@@ -28,17 +31,25 @@ _ABS_ID = re.compile(r"/abs/(?P<id>[^v\s]+)(?:v\d+)?$")
 class ArxivSource(RssSource):
     name: ClassVar[Source] = Source.ARXIV
 
+    #: arXiv's API terms ask for 3 seconds between requests.
+    request_delay: ClassVar[float] = 3.0
+
     def resolve_feed_urls(self) -> tuple[str, ...]:
-        categories = get_settings().arxiv_category_list
-        query = " OR ".join(f"cat:{c}" for c in categories)
-        params = urlencode({
-            "search_query": query,
-            "start": 0,
-            "max_results": _MAX_RESULTS,
-            "sortBy": "submittedDate",
-            "sortOrder": "descending",
-        })
-        return (f"{_API}?{params}",)
+        settings = get_settings()
+        query = " OR ".join(f"cat:{c}" for c in settings.arxiv_category_list)
+        wanted = settings.arxiv_max_results
+
+        urls = []
+        for start in range(0, wanted, _PAGE_SIZE):
+            params = urlencode({
+                "search_query": query,
+                "start": start,
+                "max_results": min(_PAGE_SIZE, wanted - start),
+                "sortBy": "submittedDate",
+                "sortOrder": "descending",
+            })
+            urls.append(f"{_API}?{params}")
+        return tuple(urls)
 
     def _to_article(self, entry: Any, published_at: datetime) -> ArticleIn | None:
         raw_id = entry.get("id", "")

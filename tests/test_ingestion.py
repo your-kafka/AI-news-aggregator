@@ -18,7 +18,7 @@ import httpx
 import pytest
 
 from lodestar.ingestion import registry
-from lodestar.ingestion.base import BaseSource, SourceFetchError
+from lodestar.ingestion.base import BaseSource, RssSource, SourceFetchError
 from lodestar.ingestion.sources.anthropic import AnthropicSource
 from lodestar.ingestion.sources.arxiv import ArxivSource
 from lodestar.ingestion.sources.hackernews import HackerNewsSource
@@ -27,6 +27,19 @@ from lodestar.ingestion.sources.youtube import YouTubeSource
 from lodestar.storage.models import Source
 
 LONG_AGO = datetime(2020, 1, 1, tzinfo=UTC)
+
+
+@pytest.fixture(autouse=True)
+def no_courtesy_delay(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Remove the inter-request delay for every test in this module.
+
+    arXiv's terms ask for 3 seconds between API calls, which is right in
+    production - but these tests use a MockTransport and never touch arXiv,
+    so the delay was costing 6 seconds per arXiv test and 18 seconds of CI
+    time per run for nothing.
+    """
+    monkeypatch.setattr(RssSource, "request_delay", 0.0)
+    monkeypatch.setattr(ArxivSource, "request_delay", 0.0)
 
 
 def mock_client(body: str | bytes, status: int = 200) -> httpx.Client:

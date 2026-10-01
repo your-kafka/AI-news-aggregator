@@ -252,3 +252,62 @@ def test_anthropic_titles_are_split_from_date_and_category(
     from lodestar.ingestion.sources.anthropic import split_title
 
     assert split_title(raw) == (title, category)
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "Oct 1, 2026ScienceClaude-shaped science",
+        "  Oct 1, 2026ScienceClaude-shaped science",
+        "\n      Oct 1, 2026ScienceClaude-shaped science",
+        "\n\t Oct 1, 2026ScienceClaude-shaped science  \n",
+    ],
+)
+def test_title_cleanup_survives_the_whitespace_rss_adds(raw: str) -> None:
+    """Regression test for a bug the original tests could not catch.
+
+    split_title anchors its date pattern with ^, and RSS wraps titles in
+    newlines and indentation - so entries with whitespace were silently left
+    uncleaned while the tidy ones worked. The first test only ever passed
+    pre-stripped strings, so it reported success on broken code.
+    """
+    from lodestar.ingestion.sources.anthropic import split_title
+
+    assert split_title(raw) == ("Claude-shaped science", "Science")
+
+
+# ---------------------------------------------------------------------------
+#  Hacker News text posts
+# ---------------------------------------------------------------------------
+
+
+def test_hn_text_posts_use_the_summary_instead_of_fetching() -> None:
+    """An Ask HN post's url is our fallback link to the discussion page.
+    Fetching that returned HTTP 419 five times for text Algolia had already
+    given us."""
+    fetcher = ContentFetcher(client=client_raising(AssertionError("must not fetch")))
+    article = make_article(
+        Source.HACKERNEWS,
+        url="https://news.ycombinator.com/item?id=4242",
+        summary=PROSE,
+    )
+
+    assert fetcher.fetch(article).startswith("Retrieval augmented")
+
+
+def test_hn_link_posts_still_fetch_the_linked_article() -> None:
+    body = page(f"<h1>Linked</h1><p>{PROSE}</p>")
+    fetcher = ContentFetcher(client=client_returning(200, body))
+    article = make_article(Source.HACKERNEWS, url="https://example.com/article")
+
+    assert "Linked" in fetcher.fetch(article)
+
+
+def test_browser_headers_are_sent() -> None:
+    """A bare User-Agent got 403 from openai.com for 25 of 71 articles. Real
+    browsers also send Accept, Accept-Language and the Sec-Fetch-* set."""
+    from lodestar.enrichment.content import BROWSER_HEADERS
+
+    assert "User-Agent" in BROWSER_HEADERS
+    assert "Accept-Language" in BROWSER_HEADERS
+    assert BROWSER_HEADERS["Sec-Fetch-Mode"] == "navigate"

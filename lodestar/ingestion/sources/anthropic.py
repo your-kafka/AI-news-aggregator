@@ -46,7 +46,10 @@ def split_title(raw: str) -> tuple[str, str | None]:
     Leaves a normal title untouched, so the one post that arrives clean is
     not mangled by a cleaner aimed at the six that do not.
     """
-    text = _LEADING_DATE.sub("", raw).strip()
+    # .strip() FIRST. RSS wraps titles in newlines and indentation, and the
+    # ^ anchor below then never matches - which silently did nothing for the
+    # entries that had whitespace, while the tidy ones worked fine.
+    text = _LEADING_DATE.sub("", raw.strip()).strip()
     for category in _CATEGORIES:
         if text.startswith(category):
             remainder = text[len(category):].strip()

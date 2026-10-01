@@ -9,9 +9,9 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
@@ -20,6 +20,9 @@ from lodestar.domain.article import ArticleIn
 from lodestar.storage.models import Article, Source
 
 log = get_logger(__name__)
+
+#: First retry delay for a transient content failure; doubles each attempt.
+RETRY_BASE_DELAY = timedelta(minutes=15)
 
 
 class ArticleRepository:
@@ -129,11 +132,18 @@ class ArticleRepository:
         The attempt limit is what makes it DRAIN. Without it a 404 or a
         transcript-disabled video is retried on every run, forever.
         """
+        now = datetime.now(UTC)
         statement = (
             select(Article)
             .where(
                 Article.content.is_(None),
                 Article.content_attempts < max_attempts,
+                # Not due yet -> skip. This is what stops a rate-limited
+                # article from burning every attempt in one run.
+                or_(
+                    Article.content_next_attempt_at.is_(None),
+                    Article.content_next_attempt_at <= now,
+                ),
             )
             .order_by(Article.published_at.desc())
             .limit(limit)
@@ -157,10 +167,20 @@ class ArticleRepository:
         article = self.session.get(Article, article_id)
         if article is None:
             return False
-        article.content_attempts = (
-            max_attempts if permanent else article.content_attempts + 1
-        )
         article.content_error = error[:2000]
+
+        if permanent:
+            # Jump to the limit so we stop asking immediately rather than
+            # after three pointless retries.
+            article.content_attempts = max_attempts
+            article.content_next_attempt_at = None
+            return True
+
+        article.content_attempts += 1
+        # Exponential backoff: 15 min, 30 min, 60 min. Long enough that a
+        # rate limit has actually had a chance to clear.
+        delay = RETRY_BASE_DELAY * (2 ** (article.content_attempts - 1))
+        article.content_next_attempt_at = datetime.now(UTC) + delay
         return True
 
     def count(self, source: Source | None = None) -> int:

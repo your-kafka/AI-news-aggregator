@@ -94,6 +94,10 @@ class BaseSource(ABC):
 class RssSource(BaseSource):
     """A source backed by one or more RSS/Atom feeds."""
 
+    #: Seconds to wait between requests. arXiv asks for 3s between API
+    #: calls; hammering a public API is how you get blocked.
+    request_delay: ClassVar[float] = 0.0
+
     #: Feeds to read. Several, because Anthropic publishes three.
     #: Static sources just set this. Sources whose URLs depend on settings
     #: (arXiv categories, YouTube channel ids) override resolve_feed_urls().
@@ -110,7 +114,10 @@ class RssSource(BaseSource):
         articles: list[ArticleIn] = []
         seen: set[str] = set()
 
-        for url in self.resolve_feed_urls():
+        for index, url in enumerate(self.resolve_feed_urls()):
+            if index and self.request_delay:
+                time.sleep(self.request_delay)
+
             # Fetch the bytes ourselves, then parse. Parsing from bytes keeps
             # the network out of feedparser, which makes this testable.
             feed = feedparser.parse(self._get(url))

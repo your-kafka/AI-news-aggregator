@@ -48,6 +48,18 @@ USER_AGENT = (
 )
 TIMEOUT = 25.0
 
+#: Headers a real browser sends. Sites fingerprint the absence of these.
+BROWSER_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "none",
+    "Sec-Fetch-User": "?1",
+    "Upgrade-Insecure-Requests": "1",
+}
+
 #: Extraction below this length means trafilatura found navigation chrome
 #: rather than an article - a paywall, a JS-only page, a redirect stub.
 #: Embedding that is worse than having nothing, because it looks like content.
@@ -100,9 +112,11 @@ class ContentFetcher:
             self._client = httpx.Client(
                 timeout=TIMEOUT,
                 follow_redirects=True,
-                # A browser User-Agent, not a library default. Several news
-                # sites serve a 403 or a stub page to obvious bots.
-                headers={"User-Agent": USER_AGENT},
+                # A User-Agent alone is not enough: openai.com answered 403
+                # for 25 of 71 articles. Real browsers also send Accept,
+                # Accept-Language and the Sec-Fetch-* set, and their absence
+                # is an easy bot signal.
+                headers=BROWSER_HEADERS,
                 transport=httpx.HTTPTransport(retries=1),
             )
         return self._client
@@ -128,6 +142,11 @@ class ContentFetcher:
             return self._from_abstract(article)
         if article.source is Source.YOUTUBE:
             return self._from_transcript(article)
+        if article.source is Source.HACKERNEWS and "/item?id=" in article.url:
+            # An Ask HN or text post. Its url is our fallback link to the
+            # discussion page, and fetching that just rate-limits us (five
+            # HTTP 419s) for text Algolia already gave us in `summary`.
+            return self._from_summary(article)
         return self._from_html(article)
 
     # -- per-source strategies --------------------------------------------
@@ -145,6 +164,13 @@ class ContentFetcher:
                 f"abstract too short ({len(abstract)} chars)"
             )
         return abstract
+
+    def _from_summary(self, article: Article) -> str:
+        """Use text the feed already supplied, with no network call at all."""
+        text = (article.summary or "").strip()
+        if len(text) < MIN_CONTENT_CHARS:
+            raise ContentUnavailable(f"summary too short ({len(text)} chars)")
+        return text
 
     def _from_transcript(self, article: Article) -> str:
         """YouTube: the spoken transcript.

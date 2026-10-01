@@ -146,6 +146,17 @@ class Article(Base):
     content_attempts: Mapped[int] = mapped_column(default=0, server_default="0")
     content_error: Mapped[str | None] = mapped_column(Text, default=None)
 
+    # WHEN to try again, not just how many times.
+    #
+    # A counter alone is not enough: each batch re-queries the work queue, so
+    # a rate-limited article burned all three of its attempts within five
+    # seconds and was then treated as permanently dead - even though a 429
+    # would have cleared in an hour. This holds the next eligible time, set
+    # to an exponentially growing delay on each transient failure.
+    content_next_attempt_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), default=None
+    )
+
     # Anything source-specific that does not deserve its own column:
     # channel_id, arXiv categories, HN score. JSONB is indexable and
     # queryable, unlike a plain JSON string.

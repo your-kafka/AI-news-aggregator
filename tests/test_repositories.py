@@ -294,3 +294,81 @@ def test_last_successful_ignores_running_and_failed(session: Session) -> None:
 
     assert last is not None
     assert last.id == good.id
+
+
+# ---------------------------------------------------------------------------
+#  Content retry backoff
+# ---------------------------------------------------------------------------
+
+
+def test_transient_failure_schedules_a_later_retry(session: Session) -> None:
+    """A counter alone let a rate-limited article burn all three attempts in
+    five seconds, because every batch re-queried the queue and it still
+    qualified. The next-attempt time is what actually spaces retries out."""
+    repo = ArticleRepository(session)
+    repo.upsert_many([article("a")])
+    stored = repo.get_by_external_id(Source.OPENAI, "a")
+    assert stored is not None
+
+    repo.mark_content_failed(stored.id, "HTTP 429")
+    session.flush()
+
+    assert stored.content_attempts == 1
+    assert stored.content_next_attempt_at is not None
+    assert stored.content_next_attempt_at > datetime.now(UTC)
+
+
+def test_retry_delay_grows_with_each_attempt(session: Session) -> None:
+    repo = ArticleRepository(session)
+    repo.upsert_many([article("a")])
+    stored = repo.get_by_external_id(Source.OPENAI, "a")
+    assert stored is not None
+
+    delays = []
+    for _ in range(3):
+        repo.mark_content_failed(stored.id, "HTTP 429")
+        session.flush()
+        assert stored.content_next_attempt_at is not None
+        delays.append(stored.content_next_attempt_at - datetime.now(UTC))
+
+    assert delays[0] < delays[1] < delays[2]
+
+
+def test_an_article_not_yet_due_is_skipped(session: Session) -> None:
+    repo = ArticleRepository(session)
+    repo.upsert_many([article("a")])
+    stored = repo.get_by_external_id(Source.OPENAI, "a")
+    assert stored is not None
+
+    repo.mark_content_failed(stored.id, "HTTP 429")
+    session.flush()
+
+    assert repo.list_needing_content() == []
+
+
+def test_an_article_past_its_retry_time_comes_back(session: Session) -> None:
+    repo = ArticleRepository(session)
+    repo.upsert_many([article("a")])
+    stored = repo.get_by_external_id(Source.OPENAI, "a")
+    assert stored is not None
+
+    repo.mark_content_failed(stored.id, "HTTP 429")
+    stored.content_next_attempt_at = datetime.now(UTC) - timedelta(minutes=1)
+    session.flush()
+
+    assert [a.external_id for a in repo.list_needing_content()] == ["a"]
+
+
+def test_permanent_failure_is_never_rescheduled(session: Session) -> None:
+    """A 404 will not become fetchable later, so there is nothing to wait for."""
+    repo = ArticleRepository(session)
+    repo.upsert_many([article("a")])
+    stored = repo.get_by_external_id(Source.OPENAI, "a")
+    assert stored is not None
+
+    repo.mark_content_failed(stored.id, "HTTP 404", permanent=True)
+    session.flush()
+
+    assert stored.content_attempts == 3
+    assert stored.content_next_attempt_at is None
+    assert repo.list_needing_content() == []

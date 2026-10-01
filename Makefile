@@ -104,6 +104,15 @@ ingest:  ## Fetch from all five sources into the database
 enrich:  ## Fetch article bodies and transcripts (make enrich n=50)
 	uv run python -m lodestar.enrichment $(or $(n),50)
 
+peek:  ## Browse the corpus: counts, longest/shortest docs, a sample
+	@uv run python -m lodestar.storage.peek
+
+show:  ## Print one full document (make show q="transformer")
+	@uv run python -m lodestar.storage.peek --show "$(q)"
+
+dsn:  ## Print the connection string for a GUI client (TablePlus, DBeaver...)
+	@uv run python -c "from lodestar.core.config import get_settings as g; print(g().database_url)"
+
 articles:  ## Show what is in the database, by source
 	@uv run python -c "from lodestar.storage.session import session_scope; from lodestar.storage.repositories import ArticleRepository; \
 	  import contextlib; \
@@ -149,4 +158,4 @@ clean:  ## Delete caches and build junk (safe - nothing important)
 #  These are COMMANDS, not files.
 #  Without this line, a folder named "test" would make `make test` do nothing.
 # ---------------------------------------------------------------------------
-.PHONY: help install up down ps logs db db-reset ingest enrich articles migrate migration rollback migrations sql lint format typecheck test cov check clean
+.PHONY: help install up down ps logs db db-reset ingest enrich peek show dsn articles migrate migration rollback migrations sql lint format typecheck test cov check clean
