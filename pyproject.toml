@@ -29,6 +29,13 @@ dependencies = [
     # -- ingestion (P2) --------------------------------------------------
     "httpx>=0.27",              # HTTP client WITH timeouts and retries
     "feedparser>=6.0.11",       # parses RSS and Atom feeds
+
+    # -- enrichment (P3) -------------------------------------------------
+    # trafilatura, NOT docling: docling is a document-conversion framework
+    # that pulls in torch. For pulling article text out of HTML it is
+    # enormous overkill and would add GBs to the Docker image.
+    "trafilatura>=1.12",
+    "youtube-transcript-api>=1.2",
 ]
 
 # ---------------------------------------------------------------------------

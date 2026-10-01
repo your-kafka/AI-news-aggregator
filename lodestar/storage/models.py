@@ -137,6 +137,15 @@ class Article(Base):
         DateTime(timezone=True), default=None
     )
 
+    # How many times we have tried to fetch the body, and why it last failed.
+    #
+    # Without these, "content IS NULL" retries a 404 or a transcript-disabled
+    # video on every single run, forever. The reference project works around
+    # this by writing the literal string "__UNAVAILABLE__" into the transcript
+    # column, which then pollutes the text that gets embedded.
+    content_attempts: Mapped[int] = mapped_column(default=0, server_default="0")
+    content_error: Mapped[str | None] = mapped_column(Text, default=None)
+
     # Anything source-specific that does not deserve its own column:
     # channel_id, arXiv categories, HN score. JSONB is indexable and
     # queryable, unlike a plain JSON string.

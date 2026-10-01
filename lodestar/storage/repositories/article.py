@@ -117,20 +117,51 @@ class ArticleRepository:
             statement = statement.where(Article.published_at >= since)
         return list(self.session.execute(statement).scalars().all())
 
-    def list_needing_content(self, limit: int = 50) -> list[Article]:
-        """Articles whose body has not been fetched yet.
+    def list_needing_content(
+        self, limit: int = 50, max_attempts: int = 3
+    ) -> list[Article]:
+        """Articles whose body has not been fetched yet, and is still worth trying.
 
-        This IS the work queue for the enrichment step in P3: "content IS
-        NULL" needs no extra table, no status column, and no risk of the
-        queue disagreeing with reality.
+        This IS the work queue for enrichment: "content IS NULL" needs no
+        extra table and no status column, so the queue cannot disagree with
+        reality.
+
+        The attempt limit is what makes it DRAIN. Without it a 404 or a
+        transcript-disabled video is retried on every run, forever.
         """
         statement = (
             select(Article)
-            .where(Article.content.is_(None))
+            .where(
+                Article.content.is_(None),
+                Article.content_attempts < max_attempts,
+            )
             .order_by(Article.published_at.desc())
             .limit(limit)
         )
         return list(self.session.execute(statement).scalars().all())
+
+    def mark_content_failed(
+        self,
+        article_id: uuid.UUID,
+        error: str,
+        *,
+        permanent: bool = False,
+        max_attempts: int = 3,
+    ) -> bool:
+        """Record why a body could not be fetched.
+
+        A permanent failure jumps straight to the attempt limit rather than
+        counting up, so we stop asking immediately instead of after three
+        pointless retries.
+        """
+        article = self.session.get(Article, article_id)
+        if article is None:
+            return False
+        article.content_attempts = (
+            max_attempts if permanent else article.content_attempts + 1
+        )
+        article.content_error = error[:2000]
+        return True
 
     def count(self, source: Source | None = None) -> int:
         statement = select(func.count()).select_from(Article)
