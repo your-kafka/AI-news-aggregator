@@ -50,6 +50,16 @@ def session(engine: Engine) -> Iterator[Session]:
     """
     connection = engine.connect()
     transaction = connection.begin()
+
+    # Start from a known-empty state.
+    #
+    # Rolling back isolates each test from the OTHER TESTS, but not from data
+    # that was already in the database - so these tests passed only while the
+    # table happened to be empty, and broke the moment `make ingest` put 132
+    # real articles in it. TRUNCATE is transactional in Postgres, so this is
+    # undone by the rollback below and real data is never lost.
+    connection.execute(text("TRUNCATE TABLE articles, runs CASCADE"))
+
     db_session = Session(bind=connection, join_transaction_mode="create_savepoint")
     try:
         yield db_session

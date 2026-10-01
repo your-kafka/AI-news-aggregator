@@ -71,8 +71,27 @@ class Settings(BaseSettings):
     postgres_db: str = "lodestar"
 
     # -----------------------------------------------------------------
+    #  Ingestion
+    #
+    #  Comma-separated rather than a JSON list: pydantic-settings expects
+    #  JSON for list[str], so YOUTUBE_CHANNEL_IDS=a,b would fail with a
+    #  confusing parse error. A string plus a split is kinder to whoever
+    #  edits .env.
+    # -----------------------------------------------------------------
+    youtube_channel_ids: str = "UCawZsQWqfGSbCI5yjkdVkTA"
+    arxiv_categories: str = "cs.AI,cs.LG,cs.CL"
+
+    # -----------------------------------------------------------------
     #  Derived values - computed from the fields above, never stored.
     # -----------------------------------------------------------------
+
+    @property
+    def youtube_channels(self) -> list[str]:
+        return [c.strip() for c in self.youtube_channel_ids.split(",") if c.strip()]
+
+    @property
+    def arxiv_category_list(self) -> list[str]:
+        return [c.strip() for c in self.arxiv_categories.split(",") if c.strip()]
 
     @property
     def is_production(self) -> bool:

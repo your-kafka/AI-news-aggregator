@@ -96,6 +96,20 @@ sql:  ## Print the SQL for pending migrations WITHOUT running it
 	uv run alembic upgrade head --sql
 
 # ---------------------------------------------------------------------------
+#  Ingestion
+# ---------------------------------------------------------------------------
+ingest:  ## Fetch from all five sources into the database
+	uv run python -m lodestar.ingestion
+
+articles:  ## Show what is in the database, by source
+	@uv run python -c "from lodestar.storage.session import session_scope; from lodestar.storage.repositories import ArticleRepository; \
+	  import contextlib; \
+	  s=session_scope(); sess=s.__enter__(); r=ArticleRepository(sess); \
+	  print('total:', r.count()); \
+	  [print(f'  {k.value:<12} {v}') for k,v in sorted(r.count_by_source().items(), key=lambda x: -x[1])]; \
+	  s.__exit__(None,None,None)"
+
+# ---------------------------------------------------------------------------
 #  Code quality
 # ---------------------------------------------------------------------------
 lint:  ## Check code style and find likely bugs
@@ -132,4 +146,4 @@ clean:  ## Delete caches and build junk (safe - nothing important)
 #  These are COMMANDS, not files.
 #  Without this line, a folder named "test" would make `make test` do nothing.
 # ---------------------------------------------------------------------------
-.PHONY: help install up down ps logs db db-reset migrate migration rollback migrations sql lint format typecheck test cov check clean
+.PHONY: help install up down ps logs db db-reset ingest articles migrate migration rollback migrations sql lint format typecheck test cov check clean

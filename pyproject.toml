@@ -25,6 +25,10 @@ dependencies = [
 
     # -- logging ---------------------------------------------------------
     "structlog>=24.4",          # JSON logs that Grafana can search
+
+    # -- ingestion (P2) --------------------------------------------------
+    "httpx>=0.27",              # HTTP client WITH timeouts and retries
+    "feedparser>=6.0.11",       # parses RSS and Atom feeds
 ]
 
 # ---------------------------------------------------------------------------
@@ -82,7 +86,7 @@ plugins = ["pydantic.mypy"]      # teaches mypy how Pydantic models work
 
 [[tool.mypy.overrides]]
 # Some libraries ship no type hints. Don't fail the build over their gaps.
-module = ["structlog.*"]
+module = ["structlog.*", "feedparser.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
