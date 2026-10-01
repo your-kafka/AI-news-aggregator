@@ -57,8 +57,6 @@ class RunStatus(StrEnum):
 # Postgres ENUM type. Adding a value to a native enum needs ALTER TYPE,
 # which cannot run inside a transaction in older Postgres and makes
 # migrations awkward. A CHECK constraint is just a normal migration.
-# create_constraint=True is required: since SQLAlchemy 1.4 it defaults to
-# False, which would give a bare VARCHAR with nothing validating the value.
 # values_callable is also required. By default SQLAlchemy stores the enum
 # MEMBER NAME ("OPENAI"), not its value ("openai") - so a hand-written
 # `WHERE source = 'openai'` would silently match nothing.
@@ -66,12 +64,28 @@ def _enum_values(enum_cls: type[StrEnum]) -> list[str]:
     return [member.value for member in enum_cls]
 
 
+def _in_clause(column: str, enum_cls: type[StrEnum]) -> str:
+    """Build "column IN ('a', 'b')" from an enum, as SQL text.
+
+    We write these CHECK constraints by hand rather than using
+    Enum(create_constraint=True). That flag builds its constraint against a
+    synthetic table at DDL time, so Alembic's autogenerate finds it in the
+    database but not in the model metadata - and emits a drop_constraint for
+    it in EVERY future migration. Declaring it here, with a name, lets
+    Alembic match the two and leave it alone.
+
+    The value list still comes from the enum, so there is one source of truth.
+    """
+    values = ", ".join(f"'{member.value}'" for member in enum_cls)
+    return f"{column} IN ({values})"
+
+
 
 _source_enum = Enum(
     Source,
     name="source_enum",
     native_enum=False,
-    create_constraint=True,
+    create_constraint=False,
     values_callable=_enum_values,
     length=32,
 )
@@ -79,7 +93,7 @@ _run_status_enum = Enum(
     RunStatus,
     name="run_status_enum",
     native_enum=False,
-    create_constraint=True,
+    create_constraint=False,
     values_callable=_enum_values,
     length=16,
 )
@@ -150,6 +164,7 @@ class Article(Base):
         Index("ix_articles_source_published_at", "source", published_at.desc()),
         # Cheap guard against junk rows.
         CheckConstraint("length(title) > 0", name="ck_articles_title_not_empty"),
+        CheckConstraint(_in_clause("source", Source), name="ck_articles_source"),
     )
 
     def __repr__(self) -> str:
@@ -188,7 +203,10 @@ class Run(Base):
     )
     error: Mapped[str | None] = mapped_column(Text, default=None)
 
-    __table_args__ = (Index("ix_runs_started_at", started_at.desc()),)
+    __table_args__ = (
+        Index("ix_runs_started_at", started_at.desc()),
+        CheckConstraint(_in_clause("status", RunStatus), name="ck_runs_status"),
+    )
 
     def __repr__(self) -> str:
         return f"<Run {self.id} {self.status}>"

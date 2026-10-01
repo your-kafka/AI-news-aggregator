@@ -100,5 +100,13 @@ jobs:
       - name: Type check
         run: make typecheck
 
+      - name: Apply migrations
+        run: uv run alembic upgrade head
+
+      - name: Check for model/migration drift
+        # Fails if a model was changed without generating a migration -
+        # the mistake that otherwise reaches production as a missing column.
+        run: uv run alembic check
+
       - name: Test
         run: make cov

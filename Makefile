@@ -76,6 +76,26 @@ db-reset:  ## DELETE ALL DATA and start a fresh database
 
 
 # ---------------------------------------------------------------------------
+#  Database migrations (Alembic)
+# ---------------------------------------------------------------------------
+migrate:  ## Apply all pending migrations
+	uv run alembic upgrade head
+
+migration:  ## Generate a migration from model changes (make migration m="add x")
+	@test -n "$(m)" || (echo 'usage: make migration m="what changed"'; exit 1)
+	uv run alembic revision --autogenerate -m "$(m)"
+
+rollback:  ## Undo the most recent migration
+	uv run alembic downgrade -1
+
+migrations:  ## Show which migration the database is on, and the history
+	@uv run alembic current
+	@uv run alembic history --indicate-current
+
+sql:  ## Print the SQL for pending migrations WITHOUT running it
+	uv run alembic upgrade head --sql
+
+# ---------------------------------------------------------------------------
 #  Code quality
 # ---------------------------------------------------------------------------
 lint:  ## Check code style and find likely bugs
@@ -112,4 +132,4 @@ clean:  ## Delete caches and build junk (safe - nothing important)
 #  These are COMMANDS, not files.
 #  Without this line, a folder named "test" would make `make test` do nothing.
 # ---------------------------------------------------------------------------
-.PHONY: help install up down ps logs db db-reset lint format typecheck test cov check clean
+.PHONY: help install up down ps logs db db-reset migrate migration rollback migrations sql lint format typecheck test cov check clean
