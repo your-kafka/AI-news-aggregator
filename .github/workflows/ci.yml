@@ -1,0 +1,104 @@
+# ============================================================================
+#  CI - runs on GitHub's machines on every push and pull request.
+#
+#  It runs the SAME make targets you run locally (make lint / typecheck /
+#  test). That is deliberate: if it is green on your laptop it is green
+#  here, and if it fails here you reproduce it with one word.
+#
+#  The runner has no .env file, which is exactly why the tests build their
+#  own environment with _env_file=None.
+# ============================================================================
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# If you push three commits quickly, cancel the older runs. Keeps the badge
+# showing the result for your LATEST commit, and saves runner minutes.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege. By default this token could write to the repo; the job
+# only needs to read the code.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: check (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+
+    strategy:
+      # Don't cancel 3.12 just because 3.11 failed - we want both results.
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    # Extra containers running alongside the job. This is docker-compose in
+    # GitHub's syntax, including the same pg_isready healthcheck as File 4.
+    #
+    # NOTE: no test uses this yet. It is here ready for P1 (the database
+    # schema), and the health options mean the job waits until Postgres
+    # genuinely answers rather than merely having started.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_USER: lodestar
+          POSTGRES_PASSWORD: ci_only_not_a_real_secret
+          POSTGRES_DB: lodestar
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U lodestar -d lodestar"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+          --health-start-period 10s
+
+    # Settings for the app under test. Safe to hardcode: this database is
+    # created fresh and destroyed when the job ends. Anything genuinely
+    # secret would come from ${{ secrets.NAME }} instead.
+    env:
+      UV_PYTHON: ${{ matrix.python-version }}
+      POSTGRES_HOST: localhost
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: lodestar
+      POSTGRES_PASSWORD: ci_only_not_a_real_secret
+      POSTGRES_DB: lodestar
+      LODESTAR_ENV: local
+      LODESTAR_LOG_LEVEL: INFO
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          # Cache the dependency downloads, keyed on uv.lock. Unchanged
+          # lockfile -> restored from cache instead of re-downloaded.
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        # --locked fails if uv.lock is out of date with pyproject.toml,
+        # so a forgotten `uv lock` cannot slip through.
+        run: uv sync --locked
+
+      - name: Lint
+        run: make lint
+
+      - name: Type check
+        run: make typecheck
+
+      - name: Test
+        run: make cov

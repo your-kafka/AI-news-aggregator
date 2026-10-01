@@ -4,6 +4,7 @@
 
 Lodestar ingests AI news from five sources and ranks it against a reader's profile using hybrid lexical + dense retrieval, multiple-instance pooling, cross-encoder re-ranking and a final LLM curation pass. It is written entirely in Python and deployed as a containerised multi-service system.
 
+[![CI](https://github.com/your-kafka/AI-news-aggregator/actions/workflows/ci.yml/badge.svg)](https://github.com/your-kafka/AI-news-aggregator/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/python-3.11-3776AB?logo=python&logoColor=white)
 ![uv](https://img.shields.io/badge/deps-uv-DE5FE9)
 ![Ruff](https://img.shields.io/badge/lint-ruff-D7FF64)
