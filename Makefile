@@ -141,6 +141,22 @@ articles:  ## Show what is in the database, by source
 # ---------------------------------------------------------------------------
 #  Code quality
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+#  Retrieval evaluation
+# ---------------------------------------------------------------------------
+eval:  ## Score the retrievers against the golden dataset
+	uv run python Evals/retrieval_eval.py
+
+eval-goldens:  ## Check every golden's documents exist in the corpus
+	uv run python Evals/validate_goldens.py
+
+eval-show:  ## Inspect one golden query (make eval-show g=G004)
+	uv run python Evals/retrieval_eval.py --show $(or $(g),G001)
+
+eval-llm:  ## Add DeepEval's LLM-judged metrics (needs an API key)
+	uv sync --group evals
+	uv run python Evals/retrieval_eval.py --deepeval
+
 lint:  ## Check code style and find likely bugs
 	uv run ruff check .
 
@@ -149,7 +165,7 @@ format:  ## Auto-fix formatting and safe lint errors
 	uv run ruff check --fix .
 
 typecheck:  ## Verify type hints are honest (mypy strict)
-	uv run mypy lodestar
+	uv run mypy lodestar Evals
 
 test:  ## Run the test suite
 	uv run pytest
@@ -175,4 +191,4 @@ clean:  ## Delete caches and build junk (safe - nothing important)
 #  These are COMMANDS, not files.
 #  Without this line, a folder named "test" would make `make test` do nothing.
 # ---------------------------------------------------------------------------
-.PHONY: help install up down ps logs db db-reset ui ui-down ingest enrich peek show dsn articles migrate migration rollback migrations sql lint format typecheck test cov check clean
+.PHONY: help install up down ps logs db db-reset ui ui-down ingest enrich peek show dsn articles eval eval-goldens eval-show eval-llm migrate migration rollback migrations sql lint format typecheck test cov check clean

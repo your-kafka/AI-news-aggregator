@@ -51,6 +51,13 @@ dev = [
     "pre-commit>=3.8",          # runs the above automatically on git commit
 ]
 
+# Evaluation only. Kept out of `dev` because deepeval pulls a large
+# dependency tree, and out of the runtime deps so it never reaches the
+# production image. Install with:  uv sync --group evals
+evals = [
+    "deepeval>=3.0",
+]
+
 # ---------------------------------------------------------------------------
 # [tool.ruff] - our linter/formatter settings.
 # Living here means they apply identically on your laptop and in CI.
@@ -92,8 +99,10 @@ show_error_codes = true
 plugins = ["pydantic.mypy"]      # teaches mypy how Pydantic models work
 
 [[tool.mypy.overrides]]
-# Some libraries ship no type hints. Don't fail the build over their gaps.
-module = ["structlog.*", "feedparser.*"]
+# Some libraries ship no type hints, and deepeval is an OPTIONAL dependency
+# (group 'evals'), so it is normally not installed at all. Neither should
+# fail the build.
+module = ["structlog.*", "feedparser.*", "deepeval.*"]
 ignore_missing_imports = true
 
 # ---------------------------------------------------------------------------
